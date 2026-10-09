@@ -10,6 +10,7 @@
 //   REPORT_PATH   仓库内路径，默认 quotas.json
 //   REPORT_EVERY  最小上报间隔（毫秒），默认 5 分钟
 //   REPORT_DRY    设为 1 时只写本地文件，不推远端
+//   REPORT_KEEP_TITLE 设为 1 时保留会话标题；默认脱敏（runtime-data 是公开分支）
 //
 // 用法：
 //   node tools/report_quota.js             # 上报一次
@@ -34,6 +35,17 @@ const BRANCH = process.env.GITHUB_BRANCH || 'runtime-data';
 if (BRANCH === 'main' || BRANCH === 'master') throw new Error('Set GITHUB_BRANCH=runtime-data; uploads to source branches are disabled');
 const EVERY = Number(process.env.REPORT_EVERY || 5 * 60 * 1000);
 const DRY = process.env.REPORT_DRY === '1' || process.argv.includes('--dry');
+const KEEP_TITLE = process.env.REPORT_KEEP_TITLE === '1';
+
+// runtime-data 是公开分支：默认抹掉本机会话标题，只留额度数字。
+// 本机 data/quotas.json 仍保留完整内容，脱敏只作用于推送出去的那份。
+function redact(data) {
+  if (KEEP_TITLE) return data;
+  const out = JSON.parse(JSON.stringify(data));
+  const wb = out.quotas && out.quotas.workbuddy;
+  if (wb && Object.prototype.hasOwnProperty.call(wb, 'title')) wb.title = '';
+  return out;
+}
 
 // 注意：console.log 只对第一个参数做 %s 替换，所以这里先 format 再拼时间戳
 function log(...a) {
@@ -120,6 +132,7 @@ async function once(opts = {}) {
   }
 
   const changed = shouldUpload(prev, data, Date.now(), opts.force);
+  const pushText = JSON.stringify(redact(data), null, 2);
   try {
     mkdirSync(dirname(LOCAL_OUT), { recursive: true });
     writeFileSync(LOCAL_OUT, text);
@@ -137,7 +150,7 @@ async function once(opts = {}) {
       q.claudecode && q.claudecode.cap,
       q.codex && q.codex.ok ? q.codex.remaining + '/' + q.codex.cap : 'n/a'
     );
-    if (!DRY && await pushToGithub(text)) writeFileSync(ACK_OUT, text);
+    if (!DRY && await pushToGithub(pushText)) writeFileSync(ACK_OUT, pushText);
   } else {
     log('no significant change');
   }

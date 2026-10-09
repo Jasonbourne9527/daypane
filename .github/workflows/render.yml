@@ -27,7 +27,10 @@ permissions:
 
 concurrency:
   group: render-screen
-  cancel-in-progress: false
+  # 必须为 true：GitHub Pages 的 deploy 任务偶发卡在 queued 永不启动（实测 10-05 卡了 5 天）。
+  # 若为 false，卡住的 run 会占住队头，之后每 30 分钟的新 run 只能 pending 再被逐个 cancel，
+  # 表现为"渲染全线 cancelled 但没有任何失败"。true 时新 run 会取消卡死的队头，自愈。
+  cancel-in-progress: true
 
 jobs:
   build:

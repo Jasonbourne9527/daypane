@@ -48,3 +48,5 @@ runtime-input/
 node_modules
 
 dist/
+# 含 token 的本地备份，绝对不要提交
+tools/report_secrets.bat.bak_*

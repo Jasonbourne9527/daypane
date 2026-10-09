@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Make the render workflow self-healing: with `cancel-in-progress: true`, a run stuck in the Pages deploy queue is cancelled by the next run instead of blocking every later render.
+- 渲染工作流改为可自愈：`cancel-in-progress: true` 后，卡在 Pages 部署队列里的运行会被下一次运行取消，不再阻塞后续所有渲染。
+
+- Redact the local session title before uploading quotas to the public `runtime-data` branch; the local `quotas.json` keeps the full value. Set `REPORT_KEEP_TITLE=1` to opt out.
+- 上报额度到公开分支 `runtime-data` 前脱敏本机会话标题，本机 `quotas.json` 仍保留完整内容；`REPORT_KEEP_TITLE=1` 可关闭脱敏。
+
 - Move repository and Pages URLs to `daypane`; migrate the two saved built-in cloud image URLs on plugin upgrade, preserving custom URLs and language.
 - 仓库及 Pages 地址迁移至 `daypane`；升级插件时自动迁移两个内置旧图源，保留自定义地址和语言。
 
