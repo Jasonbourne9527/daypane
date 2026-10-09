@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Quota reporter now falls back to a plain `git push` (Windows Credential Manager) when the API token is missing or rejected, so cloud data keeps flowing without a PAT.
+- 上报器在 API 令牌缺失/失效时自动回退为普通 `git push`（走 Windows 凭据管理器），云端数据不再依赖 PAT 存活。
+
 - Make the render workflow self-healing: with `cancel-in-progress: true`, a run stuck in the Pages deploy queue is cancelled by the next run instead of blocking every later render.
 - 渲染工作流改为可自愈：`cancel-in-progress: true` 后，卡在 Pages 部署队列里的运行会被下一次运行取消，不再阻塞后续所有渲染。
 

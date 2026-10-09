@@ -17,15 +17,20 @@
 //   node tools/report_quota.js --loop      # 常驻，按 REPORT_EVERY 循环
 //   node tools/report_quota.js --dry       # 只写本地，不推远端
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { format } from 'node:util';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { openDb, closeDb } from '../src/db.js';
 import { config } from '../src/config.js';
 import { shouldUpload } from '../src/report-policy.js';
 import { getWorkbuddy } from '../src/providers/workbuddy.js';
 import { getClaudeCodeUsage } from '../src/providers/claudecode.js';
 import { getCodexUsage } from '../src/providers/codex.js';
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const LOCAL_OUT = config.quotasFile;
 const ACK_OUT = join(dirname(LOCAL_OUT), 'last-upload.json');
@@ -120,6 +125,38 @@ async function pushToGithub(content) {
   return true;
 }
 
+// 回退通道：GITHUB_TOKEN 缺失/失效时，改走本机 git（Windows 凭据管理器里的有效凭据）。
+// 流程与 GitHub Contents API 等价：在 runtime-data 之上构造一个只改 quotas.json 的提交。
+function pushViaGit(content) {
+  const tmp = join(tmpdir(), 'quotas-remote-' + Date.now() + '.json');
+  const idx = join(REPO_ROOT, '.git', 'tmp-report-index');
+  try {
+    writeFileSync(tmp, content);
+    const g = (args, extra = {}) =>
+      execFileSync('git', ['-C', REPO_ROOT, '-c', 'credential.helper=manager', ...args], {
+        encoding: 'utf-8', maxBuffer: 1 << 24, timeout: 120000, ...extra,
+      }).trim();
+    g(['fetch', '--no-tags', 'origin', BRANCH]);
+    const base = g(['rev-parse', 'FETCH_HEAD']);
+    const ie = { env: { ...process.env, GIT_INDEX_FILE: idx } };
+    g(['read-tree', base], ie);
+    const blob = g(['hash-object', '-w', tmp], ie);
+    g(['update-index', '--add', '--cacheinfo', `100644,${blob},${REMOTE_PATH}`], ie);
+    const tree = g(['write-tree'], ie);
+    const msg = 'chore(quotas): update ' + new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const commit = g(['commit-tree', tree, '-p', base, '-m', msg], ie);
+    g(['push', 'origin', `${commit}:refs/heads/${BRANCH}`]);
+    log('pushed via git', commit.slice(0, 8));
+    return true;
+  } catch (e) {
+    log('git push failed:', String(e.stderr || e.message || e).split('\n').filter(l => /fatal|error/i.test(l))[0]?.slice(0, 180) || String(e).slice(0, 180));
+    return false;
+  } finally {
+    try { unlinkSync(idx); } catch { /* ignore */ }
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+  }
+}
+
 async function once(opts = {}) {
   const data = collect();
   const text = JSON.stringify(data, null, 2);
@@ -150,7 +187,10 @@ async function once(opts = {}) {
       q.claudecode && q.claudecode.cap,
       q.codex && q.codex.ok ? q.codex.remaining + '/' + q.codex.cap : 'n/a'
     );
-    if (!DRY && await pushToGithub(pushText)) writeFileSync(ACK_OUT, pushText);
+    if (!DRY) {
+      const ok = (await pushToGithub(pushText)) || pushViaGit(pushText);
+      if (ok) writeFileSync(ACK_OUT, pushText);
+    }
   } else {
     log('no significant change');
   }
