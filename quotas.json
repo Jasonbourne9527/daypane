@@ -1,5 +1,5 @@
 {
-  "ts": 1791644275829,
+  "ts": 1791644586688,
   "host": "DESKTOP-P8BFJDJ",
   "quotas": {
     "workbuddy": {
@@ -7,28 +7,28 @@
       "model": "hy4-preview",
       "title": "",
       "token": {
-        "used": 81005,
+        "used": 85043,
         "size": 300000,
-        "remaining": 218995,
-        "percent": 27
+        "remaining": 214957,
+        "percent": 28.3
       },
-      "used": 81005,
+      "used": 85043,
       "cap": 300000,
-      "remaining": 218995,
-      "percent": 27,
+      "remaining": 214957,
+      "percent": 28.3,
       "unit": "tokens",
       "lastActivityAt": 1791569239191,
       "source": "session"
     },
     "claudecode": {
       "ok": true,
-      "used7d": 95,
+      "used7d": 96,
       "cap": 1000,
-      "remaining": 905,
+      "remaining": 904,
       "percent": 10,
       "unit": "messages",
       "sessions7d": 1,
-      "messages7d": 95,
+      "messages7d": 96,
       "lastModel": "hy4-preview",
       "source": "local .workbuddy/projects (activity)"
     },
