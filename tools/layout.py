@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 MODULES = ('news', 'ai', 'weather', 'market', 'clocks', 'mlb', 'quote')
 PRESETS = {
+    'daypane': ['weather'],
     'daily': list(MODULES),
     'work': ['clocks', 'ai', 'news', 'weather', 'market'],
     'minimal': ['weather', 'clocks', 'quote'],

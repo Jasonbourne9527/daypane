@@ -98,7 +98,7 @@ def main():
                 subprocess.run(['node', 'tools/dump_dashboard.js'], stdout=f, check=True, timeout=120)
         data = json.loads((work / 'dashboard.json').read_text())
         sections = {k: {'ok': bool(data.get(k, {}).get('ok')), 'fetchedAt': data.get(k, {}).get('fetchedAt')}
-                    for k in ('weather', 'stocks', 'fx', 'news', 'mlb')}
+                    for k in (('weather',) if json.loads(Path(os.environ.get('SHAWN_CONFIG', 'config.json')).read_text()).get('display', {}).get('preset') == 'daypane' else ('weather', 'stocks', 'fx', 'news', 'mlb'))}
         if not data.get('ok') or not any(v['ok'] for v in sections.values()):
             raise ValueError('all public data sources unavailable')
         subprocess.run([sys.executable, 'tools/render_screen.py', '--data', str(work / 'dashboard.json'),

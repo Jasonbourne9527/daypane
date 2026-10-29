@@ -624,6 +624,13 @@ function KindleDash:buildScreen(img_path, w, h)
         SwipeScroll = { GestureRange:new{ ges = "swipe", range = function() return container.dimen end } },
     }
     function container:onTapScroll(_, ges)
+        if w > h and ges and ges.pos and ges.pos.x >= w * 64 / 1448
+            and ges.pos.x <= w * 1384 / 1448 and ges.pos.y >= h * 958 / 1072
+            and ges.pos.y <= h * 1032 / 1072 then
+            self:onClose()
+            UIManager:broadcastEvent(require("ui/event"):new("Exit"))
+            return true
+        end
         -- 顶部 10% 区域点击 = 退出（Kindle 无 Back 键，靠此关闭看板）
         if ges and ges.pos and ges.pos.y < h * 0.1 then self:onClose() end
         return true
