@@ -1,4 +1,4 @@
-name: Render Kindle Screen
+https://jasonbourne9527.github.io/daypanename: Render Kindle Screen
 
 on:
   # Backup only: external cron-job.org dispatch is the primary half-hour trigger.
