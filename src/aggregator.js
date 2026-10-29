@@ -41,6 +41,9 @@ function quotasCloud() {
 export async function buildDashboard(db) {
   const cfg = getConfig();
   const cloud = cfg.mode === 'cloud';
+  if (cfg.display?.preset === 'daypane') {
+    return { ok: true, serverTime: Date.now(), weather: await getWeather() };
+  }
 
   const [weather, stocks, fx, news, mlb, newsEn] = await Promise.all([
     getWeather(),

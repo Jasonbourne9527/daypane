@@ -35,6 +35,7 @@ function buildConfig() {
   }
 
   const cfg = {
+    display: fileConfig.display || {},
     host: fileConfig.host ?? '0.0.0.0',
     port: Number(fileConfig.port ?? 8787),
 
