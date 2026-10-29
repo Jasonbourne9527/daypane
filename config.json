@@ -70,6 +70,9 @@
   "claudeCap": 1000,
   "codexCap": 500,
   "display": {
-    "timezone": "Asia/Shanghai"
+    "timezone": "Asia/Shanghai",
+    "preset": "daypane",
+    "width": 1448,
+    "height": 1072
   }
 }
