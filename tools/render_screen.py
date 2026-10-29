@@ -509,6 +509,9 @@ def render(d, out_path=None, language="zh"):
     LANG = language
     global LAYOUT, SCREEN_W, SCREEN_H, CONTENT_W
     LAYOUT = load_layout(os.environ.get('SHAWN_CONFIG', 'config.json'))
+    if LAYOUT['preset'] == 'daypane':
+        from daypane_v1 import render_daypane
+        return render_daypane(d, out_path, f, display_now())
     # Compose at a readable portrait ratio, then scale to the selected screen.
     SCREEN_W = 1072
     SCREEN_H = round(1072 * LAYOUT['height'] / LAYOUT['width'])
