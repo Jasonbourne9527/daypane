@@ -1,3 +1,4 @@
+import { getConfig } from '../src/config.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -53,9 +54,16 @@ test('/api/dashboard returns aggregated payload', async () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
-    assert.ok(body.quotas && body.quotas.workbuddy);
-    assert.ok(Array.isArray(body.clocks.items));
-    assert.ok(body.stocks && Array.isArray(body.stocks.items));
+    if (getConfig().display.preset === 'daypane') {
+      assert.ok(body.weather);
+      for (const key of ['quotas', 'news', 'stocks', 'clocks', 'fx', 'mlb']) {
+        assert.equal(key in body, false);
+      }
+    } else {
+      assert.ok(body.quotas && body.quotas.workbuddy);
+      assert.ok(Array.isArray(body.clocks.items));
+      assert.ok(body.stocks && Array.isArray(body.stocks.items));
+    }
   } finally {
     server.close();
     db.close();
