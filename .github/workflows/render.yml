@@ -1,7 +1,5 @@
-https://jasonbourne9527.github.io/daypanename: Render Kindle Screen
-
+name: Render Kindle Screen
 on:
-  # Backup only: external cron-job.org dispatch is the primary half-hour trigger.
   schedule:
     - cron: '17,47 * * * *'
   workflow_dispatch:
@@ -14,24 +12,16 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/render.yml'
-      - 'tools/build_site.py'
-      - 'tools/render_screen.py'
-      - 'tools/layout.py'
+      - 'tools/**'
       - 'web/setup/**'
       - 'src/**'
       - 'config.json'
       - 'data/quotes*.txt'
-
 permissions:
   contents: read
-
 concurrency:
   group: render-screen
-  # 必须为 true：GitHub Pages 的 deploy 任务偶发卡在 queued 永不启动（实测 10-05 卡了 5 天）。
-  # 若为 false，卡住的 run 会占住队头，之后每 30 分钟的新 run 只能 pending 再被逐个 cancel，
-  # 表现为"渲染全线 cancelled 但没有任何失败"。true 时新 run 会取消卡死的队头，自愈。
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -64,12 +54,11 @@ jobs:
           SHAWN_MODE: cloud
           SHAWN_QUOTAS_FILE: ${{ github.workspace }}/runtime-input/quotas.json
           DISPATCH_REQUESTED_AT: ${{ inputs.requested_at }}
-        run: python tools/build_site.py --previous-url https://shenliucn-prog.github.io/daypane --output _site
+        run: python tools/build_site.py --previous-url https://jasonbourne9527.github.io/daypane --output _site
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
           retention-days: 1
-
   deploy:
     needs: build
     runs-on: ubuntu-latest
