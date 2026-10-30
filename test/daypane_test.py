@@ -148,3 +148,18 @@ class DaypaneTests(unittest.TestCase):
         d.option=function() return false end
         d:scheduleStartup();assert(d._startup_tick==nil)
         ''')
+
+    def test_weather_icons_follow_wmo_codes(self):
+        from PIL import Image, ImageDraw
+        groups = {
+            'sun': [0], 'partly_cloudy': [1, 2], 'cloud': [3], 'fog': [45, 48],
+            'rain': [51,53,55,56,57,61,63,65,66,67,80,81,82],
+            'snow': [71,73,75,77,85,86], 'thunder': [95,96,99],
+            'unknown': [None, -1, 999],
+        }
+        for kind,codes in groups.items():
+            for code in codes:
+                self.assertEqual(r.weather_icon_kind(code),kind)
+                im=Image.new('L',(110,110),255)
+                r.draw_weather_icon(ImageDraw.Draw(im),code,0,0)
+                self.assertLess(min(im.getdata()),255)
