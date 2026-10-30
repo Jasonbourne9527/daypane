@@ -96,7 +96,7 @@ def render_daypane(data, path, font, now):
         ink = gray.point(lambda value: 255 if value < 180 else 0).getbbox()
         pet = ImageOps.contain(gray.crop(ink) if ink else gray, (550, 390), Image.Resampling.LANCZOS)
         pet = pet.point(lambda value: 255 if value > 235 else value)
-        im.paste(pet, (834 + (550 - pet.width) // 2, 135 + (390 - pet.height) // 2))
+        im.paste(pet, (814 + (550 - pet.width) // 2, 165 + (390 - pet.height) // 2))
     season=((now.month % 12)//3 + 3) % 4
     for x,y in [(1280,140),(1330,175),(1300,125)]:
         if season==3:  # winter snowflakes
