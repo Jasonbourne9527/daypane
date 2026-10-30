@@ -22,7 +22,10 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local ImageWidget = require("ui/widget/imagewidget")
+local TextWidget = require("ui/widget/textwidget")
+local Font = require("ui/font")
 local Geom = require("ui/geometry")
+local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
 local Screen = Device.screen
 local ltn12 = require("ltn12")
@@ -38,7 +41,7 @@ local JSON = require("json")
 -- 网络请求超时：电脑关机时不要让用户等太久，8 秒无响应就切换下一级。
 http.TIMEOUT = 8
 
-local VERSION = "0.3.3"
+local VERSION = "0.3.3-pw3.2"
 local REFRESH_SEC = 30 * 60
 local MAX_IMAGE = 4 * 1024 * 1024
 local DEFAULT_HOST = ""
@@ -607,6 +610,34 @@ end
 
 -- ---------------- 显示 ----------------
 
+-- Rotate only the dashboard framebuffer. Do not reinitialise FileManager or
+-- persist reading rotation preferences; its original geometry is restored on exit.
+function KindleDash:restoreDashboardRotation()
+    if self._dashboard_rotation ~= nil then
+        local mode = self._dashboard_rotation
+        self._dashboard_rotation = nil
+        Screen:setRotationMode(mode)
+        UIManager:setDirty(nil, "full")
+    end
+end
+
+function KindleDash:prepareDashboardRotation(path)
+    local file = io.open(path, "rb")
+    if not file then return end
+    local header = file:read(24)
+    file:close()
+    if not header or #header < 24 or header:sub(1, 8) ~= "\137PNG\13\10\26\10" then return end
+    local function uint(offset)
+        local a, b, c, d = header:byte(offset, offset + 3)
+        return ((a * 256 + b) * 256 + c) * 256 + d
+    end
+    if uint(17) > uint(21) and Screen:getWidth() < Screen:getHeight() then
+        local mode = Screen:getRotationMode()
+        if self._dashboard_rotation == nil then self._dashboard_rotation = mode end
+        Screen:setRotationMode(Screen.DEVICE_ROTATED_CLOCKWISE or 1)
+    end
+end
+
 function KindleDash:buildScreen(img_path, w, h)
     local dash = self
     local img = ImageWidget:new{
@@ -616,8 +647,54 @@ function KindleDash:buildScreen(img_path, w, h)
         scale_factor = 0,
         file_do_cache = false,
     }
-    local container = InputContainer:new{ dimen = Geom:new{ w = w, h = h } }
+    local container = InputContainer:new{
+        dimen = Geom:new{ x = 0, y = 0, w = w, h = h },
+        fullscreen = true,
+        covers_fullscreen = true,
+    }
     container[1] = img
+    if w > h and dash:option("live_clock", true) then
+        container.clock_rect = Geom:new{
+            x = math.floor(64 * w / 1448), y = math.floor(110 * h / 1072),
+            w = math.floor(760 * w / 1448), h = math.floor(216 * h / 1072),
+        }
+        local size = TextWidget:getFontSizeToFitHeight("cfont", container.clock_rect.h, 0)
+        container.clock_widget = TextWidget:new{
+            face = Font:getFace("cfont", size), padding = 0,
+            max_width = container.clock_rect.w,
+        }
+    end
+    function container:stopClock()
+        if self._clock_tick then UIManager:unschedule(self._clock_tick) end
+    end
+    function container:armClock()
+        self:stopClock()
+        if not self.clock_widget or dash._suspended or dash.dash_widget ~= self then return end
+        if not self._clock_tick then
+            self._clock_tick = function()
+                if dash.dash_widget ~= self or dash._suspended then return end
+                UIManager:setDirty(self, "partial", self.clock_rect)
+                self:armClock()
+            end
+        end
+        UIManager:scheduleIn(60 - os.time() % 60, self._clock_tick)
+    end
+    function container:onCloseWidget()
+        self:stopClock()
+        if self.clock_widget then self.clock_widget:free() end
+    end
+    function container:paintTo(bb, x, y)
+        bb:paintRect(x, y, w, h, Blitbuffer.COLOR_WHITE)
+        InputContainer.paintTo(self, bb, x, y)
+        if self.clock_widget then
+            local r = self.clock_rect
+            bb:paintRect(x + r.x, y + r.y, r.w, r.h, Blitbuffer.COLOR_WHITE)
+            -- This deployment uses China Standard Time, independent of Kindle locale.
+            self.clock_widget:setText(os.date("!%H:%M", os.time() + 8 * 3600))
+            local size = self.clock_widget:getSize()
+            self.clock_widget:paintTo(bb, x + r.x, y + r.y + math.floor((r.h - size.h) / 2))
+        end
+    end
     -- 吃手势，防止 KOReader 的翻页/退出穿透到看板上。
     container.ges_events = {
         TapScroll = { GestureRange:new{ ges = "tap", range = function() return container.dimen end } },
@@ -641,6 +718,7 @@ function KindleDash:buildScreen(img_path, w, h)
         return true
     end
     function container:onClose()
+        self:stopClock()
         -- 先标记已关闭再关窗：否则后台刷新会误判成"看板正显示"。
         dash._generation = (dash._generation or 0) + 1
         dash._busy = false
@@ -650,17 +728,12 @@ function KindleDash:buildScreen(img_path, w, h)
         dash:holdScreen(false)
         dash:armAutoRefresh()
         UIManager:close(self)
+        dash:restoreDashboardRotation()
+        UIManager:setDirty(nil, "full")
         return true
     end
     function container:onBack()
-        dash._generation = (dash._generation or 0) + 1
-        dash._busy = false
-        dash:releaseNetwork()
-        dash.dash_widget = nil
-        dash:holdScreen(false)
-        dash:armAutoRefresh()
-        UIManager:close(self)
-        return true
+        return self:onClose()
     end
     function container:onResume()
         dash:onResume()
@@ -677,16 +750,25 @@ end
 
 function KindleDash:showDashboard(path, offline)
     local previous = self.dash_widget
-    local ok, result = pcall(self.buildScreen, self, path, Screen:getWidth(), Screen:getHeight())
+    local ok, result = pcall(function()
+        self:prepareDashboardRotation(path)
+        return self:buildScreen(path, Screen:getWidth(), Screen:getHeight())
+    end)
     if not ok then
+        if not previous then self:restoreDashboardRotation() end
         self._last_error = "Display failed: " .. tostring(result)
         self:record("display_failed", self._last_error)
         UIManager:show(InfoMessage:new{ text = self:tr("看板显示失败:\n") .. tostring(result), timeout = 8 })
         return false
     end
     UIManager:show(result)
-    if previous then UIManager:close(previous) end
+    if previous then
+        if previous.stopClock then previous:stopClock() end
+        UIManager:close(previous)
+    end
     self.dash_widget = result
+    result:armClock()
+    UIManager:setDirty(result, "full")
     -- 看板已在屏上：进入常亮模式，让 UI 定时器能按点刷新。
     if self:option("hold_screen", true) and not self._suspended then
         self:holdScreen(true)
@@ -935,6 +1017,7 @@ end
 -- ---------------- 生命周期 ----------------
 
 function KindleDash:onSuspend()
+    if self.dash_widget and self.dash_widget.stopClock then self.dash_widget:stopClock() end
     self:releaseNetwork()
     self._suspended = true
     if self._resume_tick then UIManager:unschedule(self._resume_tick) end
@@ -965,6 +1048,10 @@ end
 
 function KindleDash:onResume()
     self._suspended = false
+    if self.dash_widget and self.dash_widget.armClock then
+        UIManager:setDirty(self.dash_widget, "partial", self.dash_widget.clock_rect)
+        self.dash_widget:armClock()
+    end
     self._busy = false
     self._generation = (self._generation or 0) + 1
     if self._resume_tick then UIManager:unschedule(self._resume_tick) end
@@ -988,6 +1075,9 @@ function KindleDash:onResume()
 end
 
 function KindleDash:onCloseWidget()
+    if self._startup_tick then UIManager:unschedule(self._startup_tick) end
+    if self.dash_widget and self.dash_widget.stopClock then self.dash_widget:stopClock() end
+    self:restoreDashboardRotation()
     self._generation = (self._generation or 0) + 1
     self:releaseNetwork()
     -- 只收定时器，不改 auto_on：这个回调不只退出时触发（插件从菜单注销等也会），
@@ -1001,6 +1091,19 @@ function KindleDash:onCloseWidget()
     self._busy = false
     self:holdScreen(false)
     self:cancelRtcWake()
+end
+
+-- Show cache immediately when KOReader starts, then verify fresh cloud data.
+function KindleDash:scheduleStartup()
+    if not self:option("open_on_start", true) then return end
+    self._startup_tick = function()
+        self._startup_tick = nil
+        if self._suspended or self.dash_widget then return end
+        local path = self:cacheImg()
+        if self:fileExists(path) then self:showDashboard(path, true) end
+        self:requestRefresh(true, false)
+    end
+    UIManager:scheduleIn(1, self._startup_tick)
 end
 
 function KindleDash:init()
@@ -1029,6 +1132,7 @@ function KindleDash:init()
     -- 不在这里开自动刷新：此刻看板还没上屏，armAutoRefresh 会直接跳过。
     -- 用户打开看板（菜单"刷新看板"）时自然就会启动。
     self.ui.menu:registerToMainMenu(self)
+    self:scheduleStartup()
 end
 
 -- ---------------- 设置对话框 ----------------
@@ -1162,6 +1266,9 @@ function KindleDash:addToMainMenu(menu_items)
                   callback = function() self:setLanguage("zh") end },
             } },
             { text = self:tr("刷新看板"), callback = function() self:safeRefresh() end },
+            { text = self:label("Open DayPane when KOReader starts", "启动 KOReader 时直接打开 DayPane"),
+              checked_func = function() return self:option("open_on_start", true) end,
+              callback = function() self:setOption("open_on_start", not self:option("open_on_start", true)) end },
             { text = self:tr("设置局域网服务器"), callback = function() self:setServerAddress() end },
             { text = self:tr("设置云端图地址"), callback = function() self:setCloudUrl() end },
             { text = self:tr("切换自动刷新 (整点/半点)"), callback = function() self:toggleAutoRefresh() end },
@@ -1183,7 +1290,7 @@ function KindleDash:addToMainMenu(menu_items)
                     text = "DayPane v" .. VERSION .. "\n"
                        .. self:label("Image sources: LAN > Cloud > Cache\n", "取图顺序：局域网 PC > 云端 Pages > 本地缓存\n")
                        .. self:tr("看板显示期间保持常亮并定时刷新\n")
-                       .. self:tr("AI 额度走局域网实时，关机显示最后值\n")
+                       .. self:label("Local minute clock; weather updates in the cloud\n", "本地时钟每分钟更新，天气由云端更新\n")
                        .. self:tr("顶部下滑/顶部点击返回看板退出"),
                     timeout = 6,
                 })

@@ -15,7 +15,6 @@ def render_daypane(data, path, font, now):
     text(72,330,f'{now.year} 年 {now.month} 月 {now.day} 日   星期'+ '一二三四五六日'[now.weekday()],35)
     w=data.get('weather') or {}
     text(72,405,f"{w.get('city','')}   {w.get('temp','—')}°C   {w.get('text','')}" if w.get('ok') else '天气暂不可用',38)
-    text(72,472,'图片生成时间 · '+now.strftime('%H:%M')+'   /   云端每半小时更新',23)
     # One fixed dog, with sparse seasonal decoration.
     d.ellipse((1060,250,1300,390),outline=0,width=5)
     d.ellipse((1000,140,1190,315),fill=255,outline=0,width=5)
