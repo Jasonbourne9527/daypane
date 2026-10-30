@@ -121,3 +121,37 @@ export function getNews(language = 'zh') {
     return { ok: true, items: items.slice(0, MAX), source: 'qbitai + solidot + sspai' };
   });
 }
+
+
+// Preserve complete source headlines; never generate or semantically truncate news.
+export function parseTechFeed(xml, source, now = Date.now()) {
+  const decode = value => value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]*>/g, '').replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_, n) => {
+      const code = n[0].toLowerCase() === 'x' ? parseInt(n.slice(1), 16) : Number(n);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    }).replace(/&(amp|lt|gt|quot|apos);/g, (_, n) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[n])
+    .replace(/\s+/g, ' ').trim();
+  return (xml.match(/<item\b[^>]*>[\s\S]*?<\/item>/gi) || []).flatMap(item => {
+    const field = tag => decode(item.match(new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)</' + tag + '>', 'i'))?.[1] || '');
+    const title = field('title'), url = field('link');
+    const date = Date.parse(field('pubDate'));
+    if (!title || [...title].length > 42 || SPAM_KW.test(title) || !/^https?:\/\//.test(url)
+      || !Number.isFinite(date) || date > now + 300000 || now - date > 72 * 3600000) return [];
+    return [{ title, url, source, publishedAt: new Date(date).toISOString() }];
+  });
+}
+
+export function getTechNews() {
+  return cached('tech-news', 10 * 60 * 1000, async () => {
+    const sources = [['https://www.solidot.org/index.rss', 'Solidot'], ['https://www.ithome.com/rss/', 'IT之家']];
+    const results = await Promise.allSettled(sources.map(async ([url, source]) => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'DayPane/1.0', Accept: 'application/rss+xml,text/xml' } });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return parseTechFeed(await response.text(), source);
+    }));
+    const items = results.flatMap(r => r.status === 'fulfilled' ? r.value : [])
+      .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+      .filter((item, i, all) => all.findIndex(other => other.title === item.title) === i).slice(0, 2);
+    return { ok: items.length > 0, items, source: 'Solidot / IT之家', error: items.length ? null : '科技新闻暂不可用' };
+  });
+}
