@@ -10,6 +10,7 @@ from lupa import LuaRuntime
 lua = LuaRuntime()
 lua.execute('''
 local base = {}
+function base:paintTo() end
 function base:new(o) return setmetatable(o or {}, {__index=self}) end
 unpack = table.unpack
 
@@ -36,6 +37,7 @@ function UI:scheduleIn(delay, fn) queue[fn] = delay end
 function UI:unschedule(fn) queue[fn] = nil end
 function UI:show() end
 function UI:close() end
+function UI:setDirty() end
 function UI:suspend() end
 
 PS = {}
@@ -101,6 +103,17 @@ package.preload['ltn12'] = function() return {sink={table=function(t)
 end}} end
 package.preload['datastorage'] = function() return {getDataDir=function() return '/tmp' end} end
 package.preload['logger'] = function() return {info=function() end,warn=function() end,err=function() end} end
+package.preload['ui/font'] = function() return {getFace=function(_,_,size) return {size=size} end} end
+package.preload['ui/widget/textwidget'] = function()
+    local text = setmetatable({}, {__index=base})
+    function text:getFontSizeToFitHeight(_,height) return height/2 end
+    function text:setText(value) self.text=value end
+    function text:getSize() return {w=400,h=180} end
+    function text:paintTo() DRAWN_TIME=self.text end
+    function text:free() end
+    return text
+end
+package.preload['ffi/blitbuffer'] = function() return {COLOR_WHITE=255} end
 package.preload['ui/uimanager'] = function() return UI end
 for _, name in ipairs({'ui/widget/container/widgetcontainer','ui/widget/infomessage',
 'ui/widget/inputdialog','ui/widget/container/inputcontainer','ui/widget/imagewidget',
