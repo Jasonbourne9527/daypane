@@ -25,8 +25,9 @@ class DaypaneTests(unittest.TestCase):
         harness.lua.execute('''
         package.preload['ui/event']=function() return {new=function(_,name) return {name=name} end} end
         local count=0
-        function UI:broadcastEvent(event) assert(event.name=='Exit');count=count+1 end
+        function UI:broadcastEvent() error('must remain in KOReader') end
         local d=Plugin:new{}
+        d.openReading=function(_,library) count=count+1;assert(not library) end
         d.releaseNetwork=function() end
         d.holdScreen=function() end
         d.armAutoRefresh=function() end
@@ -130,6 +131,7 @@ class DaypaneTests(unittest.TestCase):
 
     def test_startup_uses_cache_and_respects_opt_out(self):
         harness.lua.execute('''
+        require('pluginshare').daypane_started=nil
         local d=Plugin:new{}
         d.option=function(_,_,default) return default end
         d.cacheImg=function() return 'cached.png' end
@@ -147,6 +149,23 @@ class DaypaneTests(unittest.TestCase):
         assert(calls[1]=='cache' and calls[2]=='refresh' and d._startup_tick==nil)
         d.option=function() return false end
         d:scheduleStartup();assert(d._startup_tick==nil)
+        ''')
+
+
+    def test_reading_stays_inside_koreader_and_session_guard(self):
+        harness.lua.execute('''
+        local saved,home,opened=0,0,0
+        local d=Plugin:new{ui={document={},onHome=function() home=home+1 end}}
+        d:openReading(false);assert(home==0)
+        d:openReading(true);assert(home==1)
+        d:scheduleStartup();assert(d._startup_tick==nil)
+        local original=G_reader_settings
+        G_reader_settings={readSetting=function() return nil end}
+        d.ui={onOpenLastDoc=function() opened=opened+1 end}
+        d:openReading(false);assert(opened==0)
+        d:openReading(true);assert(opened==0)
+        G_reader_settings=original
+        require('pluginshare').daypane_started=nil
         ''')
 
     def test_weather_icons_follow_wmo_codes(self):

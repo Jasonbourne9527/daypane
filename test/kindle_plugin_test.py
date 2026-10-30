@@ -96,6 +96,7 @@ function HTTP.request(req)
     req.sink('\\137PNGrest')
     return 1, 200
 end
+package.preload['dispatcher'] = function() return {registerAction=function() end} end
 package.preload['pluginshare'] = function() return PS end
 package.preload['socket.http'] = function() return HTTP end
 package.preload['ltn12'] = function() return {sink={table=function(t)
