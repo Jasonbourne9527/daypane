@@ -86,8 +86,7 @@ def render_daypane(data, path, font, now):
         d.text((x,y),str(s),font=font(size),fill=0)
     text(64,40,'LESS OVERTHINKING MORE DOING',26)
     d.line((64,100,1384,100),fill=0,width=2)
-    text(64,120,now.strftime('%H:%M'),168)
-    text(72,330,f'{now.year} 年 {now.month} 月 {now.day} 日   星期'+ '一二三四五六日'[now.weekday()],35)
+    text(64,105,now.strftime('%H:%M'),220)
     w=data.get('weather') or {}
     draw_weather_row(im, w, font(38))
     # A single generated asset, reused on every cloud run (no image API calls).
@@ -112,7 +111,7 @@ def render_daypane(data, path, font, now):
             d.polygon([(x,y-14),(x+12,y),(x,y+14),(x-8,y)],outline=0,width=2)
             d.line((x,y-10,x-5,y+20),fill=0,width=2)
     d.line((64,560,1384,560),fill=0,width=2)
-    text(72,590,f'{now.month:02d} / 月历',32)
+    text(72,590,f'{now.year}年{now.month}月{now.day}日  星期'+ '一二三四五六日'[now.weekday()],27)
     for j,s in enumerate('日一二三四五六'): text(74+j*65,650,s,24)
     for i,week in enumerate(month_weeks(now.year,now.month)):
         for j,day in enumerate(week):
@@ -121,16 +120,34 @@ def render_daypane(data, path, font, now):
                 if day==now.day: d.ellipse((x-5,y,x+35,y+35),outline=0,width=2)
                 text(x,y,day,24)
     lunar=Solar.fromYmd(now.year,now.month,now.day).getLunar()
-    text(650,590,'今日黄历',32)
-    text(650,652,f'农历 {lunar.getMonthInChinese()}月{lunar.getDayInChinese()}',32)
-    eight=lunar
-    for y,label,items in [(720,'宜',eight.getDayYi()),(798,'忌',eight.getDayJi())]:
-        text(650,y,label,30)
-        text(715,y,' · '.join(items[:4]),27)
-    text(650,865,'传统民俗参考',21)
-    d.rectangle((64,958,1384,1032),outline=0,width=2)
-    text(100,970,'打开 Kindle 原生界面  →',34)
-    text(970,984,'退出 KOReader 后选书阅读',23)
+    def wrap(value, size, width):
+        lines, line = [], ''
+        for ch in value:
+            if line and d.textlength(line+ch,font=font(size)) > width:
+                lines.append(line); line = ''
+            line += ch
+        if line: lines.append(line)
+        return lines
+    text(560,590,'今日黄历',32)
+    text(560,652,f'农历 {lunar.getMonthInChinese()}月{lunar.getDayInChinese()}',30)
+    for y,label,items in [(720,'宜',lunar.getDayYi()),(802,'忌',lunar.getDayJi())]:
+        text(560,y,label,28)
+        for row,line in enumerate(wrap(' · '.join(items[:3]),24,310)[:2]):
+            text(610,y+row*32,line,24)
+    text(560,890,'传统民俗参考',20)
+    text(1000,590,'科技新闻',32)
+    news=data.get('news') or {}
+    items=news.get('items',[]) if news.get('ok') else []
+    if not items: text(1000,660,'科技新闻暂不可用',25)
+    for index,item in enumerate(items[:2]):
+        y=650+index*140
+        for row,line in enumerate(wrap(item.get('title',''),24,384)):
+            text(1000,y+row*30,line,24)
+        stamp=str(item.get('publishedAt',''))[5:10]
+        text(1000,y+100,f"{item.get('source','')}  {stamp}"+(' 缓存' if news.get('stale') else ''),18)
+    for left,right,label in [(64,704,'继续阅读  →'),(744,1384,'打开书库  →')]:
+        d.rectangle((left,958,right,1032),outline=0,width=2)
+        text(left+36,970,label,34)
     im=im.convert('1')
     im.save(path if path else sys.stdout.buffer,format='PNG')
     return im
