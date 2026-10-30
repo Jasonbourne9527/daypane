@@ -2,9 +2,9 @@
   "host": "0.0.0.0",
   "port": 8787,
   "weather": {
-    "city": "深圳",
-    "lat": 22.54,
-    "lon": 114.06
+    "city": "云南昆明",
+    "lat": 25.0389,
+    "lon": 102.7183
   },
   "fxBase": "USD",
   "stocks": [
