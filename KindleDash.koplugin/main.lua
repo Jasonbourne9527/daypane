@@ -41,7 +41,7 @@ local JSON = require("json")
 -- 网络请求超时：电脑关机时不要让用户等太久，8 秒无响应就切换下一级。
 http.TIMEOUT = 8
 
-local VERSION = "0.3.3-pw3.2"
+local VERSION = "0.3.3-pw3.3"
 local REFRESH_SEC = 30 * 60
 local MAX_IMAGE = 4 * 1024 * 1024
 local DEFAULT_HOST = ""
@@ -638,6 +638,19 @@ function KindleDash:prepareDashboardRotation(path)
     end
 end
 
+function KindleDash:readBattery()
+    local ok, capacity, charging = pcall(function()
+        local power = Device:getPowerDevice()
+        local value = power:getCapacity()
+        local connected = (power.isCharging and power:isCharging())
+            or (power.isCharged and power:isCharged()) or false
+        return value, connected
+    end)
+    if not ok or type(capacity) ~= "number" or capacity ~= capacity
+        or capacity < 0 or capacity > 100 then return nil, false end
+    return math.floor(capacity + 0.5), charging
+end
+
 function KindleDash:buildScreen(img_path, w, h)
     local dash = self
     local img = ImageWidget:new{
@@ -664,16 +677,31 @@ function KindleDash:buildScreen(img_path, w, h)
             max_width = container.clock_rect.w,
         }
     end
+    if w > h and dash:option("show_battery", true) then
+        container.battery_rect = Geom:new{
+            x = math.floor(1160 * w / 1448), y = math.floor(900 * h / 1072),
+            w = math.floor(224 * w / 1448), h = math.floor(40 * h / 1072),
+        }
+        local size = TextWidget:getFontSizeToFitHeight("cfont", container.battery_rect.h - 4, 0)
+        container.battery_widget = TextWidget:new{
+            face = Font:getFace("cfont", size), padding = 0,
+            max_width = container.battery_rect.w - math.floor(72 * w / 1448),
+        }
+    end
+    function container:refreshLocalIndicators()
+        if self.clock_widget then UIManager:setDirty(self, "partial", self.clock_rect) end
+        if self.battery_widget then UIManager:setDirty(self, "partial", self.battery_rect) end
+    end
     function container:stopClock()
         if self._clock_tick then UIManager:unschedule(self._clock_tick) end
     end
     function container:armClock()
         self:stopClock()
-        if not self.clock_widget or dash._suspended or dash.dash_widget ~= self then return end
+        if (not self.clock_widget and not self.battery_widget) or dash._suspended or dash.dash_widget ~= self then return end
         if not self._clock_tick then
             self._clock_tick = function()
                 if dash.dash_widget ~= self or dash._suspended then return end
-                UIManager:setDirty(self, "partial", self.clock_rect)
+                self:refreshLocalIndicators()
                 self:armClock()
             end
         end
@@ -682,6 +710,7 @@ function KindleDash:buildScreen(img_path, w, h)
     function container:onCloseWidget()
         self:stopClock()
         if self.clock_widget then self.clock_widget:free() end
+        if self.battery_widget then self.battery_widget:free() end
     end
     function container:paintTo(bb, x, y)
         bb:paintRect(x, y, w, h, Blitbuffer.COLOR_WHITE)
@@ -693,6 +722,27 @@ function KindleDash:buildScreen(img_path, w, h)
             self.clock_widget:setText(os.date("!%H:%M", os.time() + 8 * 3600))
             local size = self.clock_widget:getSize()
             self.clock_widget:paintTo(bb, x + r.x, y + r.y + math.floor((r.h - size.h) / 2))
+        end
+        if self.battery_widget then
+            local r = self.battery_rect
+            local capacity, charging = dash:readBattery()
+            bb:paintRect(x + r.x, y + r.y, r.w, r.h, Blitbuffer.COLOR_WHITE)
+            local function rect(px, py, pw, ph, color)
+                bb:paintRect(x + r.x + math.floor(px * w / 1448),
+                    y + r.y + math.floor(py * h / 1072),
+                    math.max(1, math.floor(pw * w / 1448)),
+                    math.max(1, math.floor(ph * h / 1072)), color)
+            end
+            rect(8, 8, 50, 24, Blitbuffer.COLOR_BLACK)
+            rect(10, 10, 46, 20, Blitbuffer.COLOR_WHITE)
+            rect(58, 15, 4, 10, Blitbuffer.COLOR_BLACK)
+            if capacity and capacity > 0 then
+                rect(12, 12, 42 * capacity / 100, 16, Blitbuffer.COLOR_BLACK)
+            end
+            self.battery_widget:setText(capacity and (tostring(capacity) .. "%" .. (charging and " +" or "")) or "--")
+            local size = self.battery_widget:getSize()
+            self.battery_widget:paintTo(bb, x + r.x + math.floor(72 * w / 1448),
+                y + r.y + math.floor((r.h - size.h) / 2))
         end
     end
     -- 吃手势，防止 KOReader 的翻页/退出穿透到看板上。
@@ -1049,7 +1099,7 @@ end
 function KindleDash:onResume()
     self._suspended = false
     if self.dash_widget and self.dash_widget.armClock then
-        UIManager:setDirty(self.dash_widget, "partial", self.dash_widget.clock_rect)
+        self.dash_widget:refreshLocalIndicators()
         self.dash_widget:armClock()
     end
     self._busy = false

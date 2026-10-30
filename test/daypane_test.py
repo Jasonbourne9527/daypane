@@ -104,18 +104,18 @@ class DaypaneTests(unittest.TestCase):
         local redraws=0
         local old_dirty=UI.setDirty
         function UI:setDirty(target,kind,rect)
-            assert(target==widget and kind=='partial' and rect==widget.clock_rect)
+            assert(target==widget and kind=='partial' and (rect==widget.clock_rect or rect==widget.battery_rect))
             redraws=redraws+1
         end
         widget:armClock()
         assert(UI.queue[widget._clock_tick]==55)
         widget:paintTo({paintRect=function() end},0,0)
-        assert(DRAWN_TIME==os.date('!%H:%M',now+8*3600))
+        assert(widget.clock_widget.text==os.date('!%H:%M',now+8*3600))
         now=now+55
         widget._clock_tick()
-        assert(redraws==1 and UI.queue[widget._clock_tick]==60)
+        assert(redraws==2 and UI.queue[widget._clock_tick]==60)
         widget:paintTo({paintRect=function() end},0,0)
-        assert(DRAWN_TIME==os.date('!%H:%M',now+8*3600))
+        assert(widget.clock_widget.text==os.date('!%H:%M',now+8*3600))
         widget:stopClock()
         assert(UI.queue[widget._clock_tick]==nil)
         d._suspended=true;widget:armClock()
@@ -182,3 +182,36 @@ class DaypaneTests(unittest.TestCase):
             self.assertLessEqual(icon[2]-icon[0],58)
             self.assertLessEqual(icon[3]-icon[1],58)
         self.assertIsNone(r.draw_weather_row(im,{'ok':False},font)[1])
+
+    def test_battery_capacity_charging_and_unknown(self):
+        harness.lua.execute('''
+        local old_capacity,old_charging,old_charged=POWER.getCapacity,POWER.isCharging,POWER.isCharged
+        local value,charging,full=73,false,false
+        function POWER:getCapacity() return value end
+        function POWER:isCharging() return charging end
+        function POWER:isCharged() return full end
+        local d=Plugin:new{}
+        d.option=function(_,key,default) if key=='live_clock' then return false end;return default end
+        local widget=d:buildScreen('unused',1448,1072)
+        d.dash_widget=widget
+        assert(widget.clock_widget==nil and widget.battery_widget~=nil)
+        widget:armClock();assert(UI.queue[widget._clock_tick]~=nil)
+        for _,test in ipairs({{0,false,false,'0%'},{73,false,false,'73%'},
+                {73,true,false,'73% +'},{100,false,true,'100% +'},
+                {-1,false,false,'--'},{101,false,false,'--'}}) do
+            value,charging,full=test[1],test[2],test[3]
+            widget:paintTo({paintRect=function() end},0,0)
+            assert(widget.battery_widget.text==test[4])
+        end
+        POWER.getCapacity=function() error('no battery data') end
+        widget:paintTo({paintRect=function() end},0,0)
+        assert(widget.battery_widget.text=='--')
+        widget:onCloseWidget();assert(UI.queue[widget._clock_tick]==nil)
+        POWER.getCapacity,POWER.isCharging,POWER.isCharged=old_capacity,old_charging,old_charged
+        ''')
+
+    def test_cat_stays_clear_of_existing_clock_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            im=r.render_daypane({'weather':{'ok':False}},tmp+'/screen.png',
+                lambda size: ImageFont.load_default(size=size),datetime(2026,10,30,13,0))
+            self.assertEqual(im.crop((790,110,824,326)).getextrema(),(255,255))
