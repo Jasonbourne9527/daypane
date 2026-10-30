@@ -41,7 +41,7 @@ local JSON = require("json")
 -- 网络请求超时：电脑关机时不要让用户等太久，8 秒无响应就切换下一级。
 http.TIMEOUT = 8
 
-local VERSION = "0.3.3-pw3.4"
+local VERSION = "0.3.3-pw3.5"
 local REFRESH_SEC = 30 * 60
 local MAX_IMAGE = 4 * 1024 * 1024
 local DEFAULT_HOST = ""
@@ -669,7 +669,7 @@ function KindleDash:buildScreen(img_path, w, h)
     if w > h and dash:option("live_clock", true) then
         container.clock_rect = Geom:new{
             x = math.floor(64 * w / 1448), y = math.floor(110 * h / 1072),
-            w = math.floor(760 * w / 1448), h = math.floor(216 * h / 1072),
+            w = math.floor(700 * w / 1448), h = math.floor(280 * h / 1072),
         }
         local size = TextWidget:getFontSizeToFitHeight("cfont", container.clock_rect.h, 0)
         container.clock_widget = TextWidget:new{
@@ -754,8 +754,9 @@ function KindleDash:buildScreen(img_path, w, h)
         if w > h and ges and ges.pos and ges.pos.x >= w * 64 / 1448
             and ges.pos.x <= w * 1384 / 1448 and ges.pos.y >= h * 958 / 1072
             and ges.pos.y <= h * 1032 / 1072 then
+            local library = ges.pos.x >= w * 744 / 1448
             self:onClose()
-            UIManager:broadcastEvent(require("ui/event"):new("Exit"))
+            dash:openReading(library)
             return true
         end
         -- 顶部 10% 区域点击 = 退出（Kindle 无 Back 键，靠此关闭看板）
@@ -799,6 +800,7 @@ function KindleDash:buildScreen(img_path, w, h)
 end
 
 function KindleDash:showDashboard(path, offline)
+    require("pluginshare").daypane_started = true
     local previous = self.dash_widget
     local ok, result = pcall(function()
         self:prepareDashboardRotation(path)
@@ -1144,11 +1146,42 @@ function KindleDash:onCloseWidget()
 end
 
 -- Show cache immediately when KOReader starts, then verify fresh cloud data.
+-- Use KOReader's own navigation so document position is saved normally.
+function KindleDash:openReading(library)
+    require("pluginshare").daypane_started = true
+    if self.ui.document then
+        if library then self.ui:onHome() end
+        return true
+    end
+    if not library then
+        local last = G_reader_settings:readSetting("lastfile")
+        if last and lfs.attributes(last, "mode") == "file" then
+            self.ui:onOpenLastDoc()
+        else
+            UIManager:show(InfoMessage:new{ text = "请先在书库打开一本书，之后可继续阅读。" })
+        end
+    end
+    return true
+end
+
+function KindleDash:onShowDayPane()
+    local path = self:cacheImg()
+    if self:fileExists(path) then self:showDashboard(path, true)
+    else self:safeRefresh() end
+    return true
+end
+
+function KindleDash:onDispatcherRegisterActions()
+    require("dispatcher"):registerAction("daypane_dashboard", {
+        category = "none", event = "ShowDayPane", title = "返回 DayPane 看板", general = true,
+    })
+end
+
 function KindleDash:scheduleStartup()
-    if not self:option("open_on_start", true) then return end
+    if not self:option("open_on_start", true) or require("pluginshare").daypane_started then return end
     self._startup_tick = function()
         self._startup_tick = nil
-        if self._suspended or self.dash_widget then return end
+        if self._suspended or self.dash_widget or require("pluginshare").daypane_started then return end
         local path = self:cacheImg()
         if self:fileExists(path) then self:showDashboard(path, true) end
         self:requestRefresh(true, false)
@@ -1181,6 +1214,7 @@ function KindleDash:init()
     end
     -- 不在这里开自动刷新：此刻看板还没上屏，armAutoRefresh 会直接跳过。
     -- 用户打开看板（菜单"刷新看板"）时自然就会启动。
+    self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     self:scheduleStartup()
 end
@@ -1316,6 +1350,7 @@ function KindleDash:addToMainMenu(menu_items)
                   callback = function() self:setLanguage("zh") end },
             } },
             { text = self:tr("刷新看板"), callback = function() self:safeRefresh() end },
+            { text = "返回看板", callback = function() self:onShowDayPane() end },
             { text = self:label("Open DayPane when KOReader starts", "启动 KOReader 时直接打开 DayPane"),
               checked_func = function() return self:option("open_on_start", true) end,
               callback = function() self:setOption("open_on_start", not self:option("open_on_start", true)) end },

@@ -5,7 +5,7 @@ import { getWeather } from './providers/weather.js';
 import { getStocks } from './providers/stocks.js';
 import { getClocks } from './providers/clocks.js';
 import { getFx } from './providers/fx.js';
-import { getNews } from './providers/news.js';
+import { getNews, getTechNews } from './providers/news.js';
 import { getMlb } from './providers/mlb.js';
 import { getReported } from './reported.js';
 import { getConfig } from './config.js';
@@ -42,7 +42,8 @@ export async function buildDashboard(db) {
   const cfg = getConfig();
   const cloud = cfg.mode === 'cloud';
   if (cfg.display?.preset === 'daypane') {
-    return { ok: true, serverTime: Date.now(), weather: await getWeather() };
+    const [weather, news] = await Promise.all([getWeather(), getTechNews()]);
+    return { ok: true, serverTime: Date.now(), weather, news };
   }
 
   const [weather, stocks, fx, news, mlb, newsEn] = await Promise.all([

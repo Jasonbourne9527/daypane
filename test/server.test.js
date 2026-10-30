@@ -56,7 +56,8 @@ test('/api/dashboard returns aggregated payload', async () => {
     assert.equal(body.ok, true);
     if (getConfig().display.preset === 'daypane') {
       assert.ok(body.weather);
-      for (const key of ['quotas', 'news', 'stocks', 'clocks', 'fx', 'mlb']) {
+      assert.ok(Array.isArray(body.news.items));
+      for (const key of ['quotas', 'stocks', 'clocks', 'fx', 'mlb']) {
         assert.equal(key in body, false);
       }
     } else {
