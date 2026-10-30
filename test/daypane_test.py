@@ -163,3 +163,22 @@ class DaypaneTests(unittest.TestCase):
                 im=Image.new('L',(110,110),255)
                 r.draw_weather_icon(ImageDraw.Draw(im),code,0,0)
                 self.assertLess(min(im.getdata()),255)
+
+    def test_sunday_calendar_placements(self):
+        self.assertEqual(r.month_weeks(2024,9)[0],[1,2,3,4,5,6,7])
+        self.assertEqual(r.month_weeks(2026,10)[0],[0,0,0,0,1,2,3])
+        weeks=r.month_weeks(2025,3)
+        self.assertEqual(len(weeks),6)
+        self.assertEqual(weeks[0],[0,0,0,0,0,0,1])
+
+    def test_weather_icon_follows_text_and_is_centered(self):
+        from PIL import Image
+        font=ImageFont.load_default(size=38)
+        for city,condition in [('A','Clear'),('Kunming','Thunderstorm')]:
+            im=Image.new('L',(1448,1072),255)
+            text,icon=r.draw_weather_row(im,{'ok':True,'city':city,'temp':22,'text':condition,'code':95},font)
+            self.assertEqual(icon[0]-text[2],20)
+            self.assertLessEqual(abs((icon[1]+icon[3])-(text[1]+text[3])),1)
+            self.assertLessEqual(icon[2]-icon[0],58)
+            self.assertLessEqual(icon[3]-icon[1],58)
+        self.assertIsNone(r.draw_weather_row(im,{'ok':False},font)[1])
