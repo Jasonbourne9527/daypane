@@ -56,27 +56,49 @@ def draw_weather_icon(draw, code, x=700, y=397):
         line([(21,88),(76,88)])
 
 
+def month_weeks(year, month):
+    return calendar.Calendar(firstweekday=6).monthdayscalendar(year, month)
+
+
+def draw_weather_row(im, weather, font):
+    draw = ImageDraw.Draw(im)
+    label = (f"{weather.get('city','')}   {weather.get('temp','—')}°C   {weather.get('text','')}"
+             if weather.get('ok') else '天气暂不可用')
+    draw.text((72,405),label,font=font,fill=0)
+    bounds=draw.textbbox((72,405),label,font=font)
+    if not weather.get('ok'): return bounds, None
+    icon=Image.new('L',(110,110),255)
+    draw_weather_icon(ImageDraw.Draw(icon),weather.get('code'),0,0)
+    ink=ImageOps.invert(icon).getbbox()
+    if not ink: return bounds, None
+    icon=ImageOps.contain(icon.crop(ink),(58,58),Image.Resampling.LANCZOS)
+    x=bounds[2]+20
+    y=(bounds[1]+bounds[3]-icon.height)//2
+    im.paste(icon,(x,y))
+    return bounds,(x,y,x+icon.width,y+icon.height)
+
+
 def render_daypane(data, path, font, now):
     from lunar_python import Solar
     im = Image.new('L', (1448, 1072), 255)
     d = ImageDraw.Draw(im)
     def text(x,y,s,size=30):
         d.text((x,y),str(s),font=font(size),fill=0)
-    text(64,40,'D A Y P A N E   /   日 常',26)
+    text(64,40,'LESS OVERTHINKING MORE DOING',26)
     d.line((64,100,1384,100),fill=0,width=2)
     text(64,120,now.strftime('%H:%M'),168)
     text(72,330,f'{now.year} 年 {now.month} 月 {now.day} 日   星期'+ '一二三四五六日'[now.weekday()],35)
     w=data.get('weather') or {}
-    text(72,405,f"{w.get('city','')}   {w.get('temp','—')}°C   {w.get('text','')}" if w.get('ok') else '天气暂不可用',38)
-    if w.get('ok'):
-        draw_weather_icon(d, w.get('code'))
+    draw_weather_row(im, w, font(38))
     # A single generated asset, reused on every cloud run (no image API calls).
     with Image.open(Path(__file__).parent / 'golden-retriever.png') as asset:
-        dog = ImageOps.contain(asset.convert('L'), (444, 330), Image.Resampling.LANCZOS)
+        gray = asset.convert('L')
+        ink = gray.point(lambda value: 255 if value < 180 else 0).getbbox()
+        dog = ImageOps.contain(gray.crop(ink) if ink else gray, (550, 390), Image.Resampling.LANCZOS)
         dog = dog.point(lambda value: 0 if value < 215 else 255)
-        im.paste(dog, (940 + (444 - dog.width) // 2, 170 + (330 - dog.height) // 2))
+        im.paste(dog, (834 + (550 - dog.width) // 2, 135 + (390 - dog.height) // 2))
     season=((now.month % 12)//3 + 3) % 4
-    for x,y in [(1280,140),(1330,175),(1300,100)]:
+    for x,y in [(1280,140),(1330,175),(1300,125)]:
         if season==3:  # winter snowflakes
             for dx,dy in [(13,0),(0,13),(9,9),(9,-9)]:
                 d.line((x-dx,y-dy,x+dx,y+dy),fill=0,width=2)
@@ -91,8 +113,8 @@ def render_daypane(data, path, font, now):
             d.line((x,y-10,x-5,y+20),fill=0,width=2)
     d.line((64,560,1384,560),fill=0,width=2)
     text(72,590,f'{now.month:02d} / 月历',32)
-    for j,s in enumerate('一二三四五六日'): text(74+j*65,650,s,24)
-    for i,week in enumerate(calendar.monthcalendar(now.year,now.month)):
+    for j,s in enumerate('日一二三四五六'): text(74+j*65,650,s,24)
+    for i,week in enumerate(month_weeks(now.year,now.month)):
         for j,day in enumerate(week):
             if day:
                 x,y=74+j*65,690+i*36
