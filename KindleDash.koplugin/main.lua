@@ -41,7 +41,7 @@ local JSON = require("json")
 -- 网络请求超时：电脑关机时不要让用户等太久，8 秒无响应就切换下一级。
 http.TIMEOUT = 8
 
-local VERSION = "0.3.3-pw3.5"
+local VERSION = "0.3.3-pw3.6"
 local REFRESH_SEC = 30 * 60
 local MAX_IMAGE = 4 * 1024 * 1024
 local DEFAULT_HOST = ""
@@ -1147,19 +1147,44 @@ end
 
 -- Show cache immediately when KOReader starts, then verify fresh cloud data.
 -- Use KOReader's own navigation so document position is saved normally.
+function KindleDash:openLibrary()
+    local browser = self.ui
+    if self.ui.document then
+        -- KOReader saves the document before returning to its file manager.
+        self.ui:onHome()
+        browser = require("apps/filemanager/filemanager").instance
+    end
+    local path = "/mnt/us/documents"
+    if browser and browser.file_chooser and lfs.attributes(path, "mode") == "directory" then
+        browser.file_chooser:changeToPath(path)
+    end
+end
+
 function KindleDash:openReading(library)
     require("pluginshare").daypane_started = true
-    if self.ui.document then
-        if library then self.ui:onHome() end
-        return true
-    end
-    if not library then
-        local last = G_reader_settings:readSetting("lastfile")
-        if last and lfs.attributes(last, "mode") == "file" then
-            self.ui:onOpenLastDoc()
-        else
-            UIManager:show(InfoMessage:new{ text = "请先在书库打开一本书，之后可继续阅读。" })
+    local ok, err = pcall(function()
+        if library then
+            self:openLibrary()
+        elseif not self.ui.document then
+            local last = G_reader_settings:readSetting("lastfile")
+            if last and lfs.attributes(last, "mode") == "file" then
+                -- FileManager:onOpenLastDoc does not exist in v2026.07.1.
+                -- Use its actual document-opening API, verified on the device.
+                if type(self.ui.openFile) == "function" then
+                    self.ui:openFile(last)
+                else
+                    require("apps/reader/readerui"):showReader(last)
+                end
+            else
+                self:openLibrary()
+                UIManager:show(InfoMessage:new{ text = "请先从书库打开一本书，之后可继续阅读。" })
+            end
         end
+        -- An already open reader remains alive behind the dashboard.
+    end)
+    if not ok then
+        self:record("reading_navigation_failed", err)
+        UIManager:show(InfoMessage:new{ text = "打开阅读失败，请从书库选择书籍。\n" .. tostring(err) })
     end
     return true
 end
