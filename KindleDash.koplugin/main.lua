@@ -41,7 +41,7 @@ local JSON = require("json")
 -- 网络请求超时：电脑关机时不要让用户等太久，8 秒无响应就切换下一级。
 http.TIMEOUT = 8
 
-local VERSION = "0.3.3-pw3.3"
+local VERSION = "0.3.3-pw3.4"
 local REFRESH_SEC = 30 * 60
 local MAX_IMAGE = 4 * 1024 * 1024
 local DEFAULT_HOST = ""
@@ -679,7 +679,7 @@ function KindleDash:buildScreen(img_path, w, h)
     end
     if w > h and dash:option("show_battery", true) then
         container.battery_rect = Geom:new{
-            x = math.floor(1160 * w / 1448), y = math.floor(900 * h / 1072),
+            x = math.floor(1160 * w / 1448), y = math.floor(35 * h / 1072),
             w = math.floor(224 * w / 1448), h = math.floor(40 * h / 1072),
         }
         local size = TextWidget:getFontSizeToFitHeight("cfont", container.battery_rect.h - 4, 0)
