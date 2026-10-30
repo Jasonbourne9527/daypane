@@ -152,19 +152,35 @@ class DaypaneTests(unittest.TestCase):
         ''')
 
 
-    def test_reading_stays_inside_koreader_and_session_guard(self):
+    def test_reading_uses_device_api_and_documents_library(self):
         harness.lua.execute('''
-        local saved,home,opened=0,0,0
-        local d=Plugin:new{ui={document={},onHome=function() home=home+1 end}}
-        d:openReading(false);assert(home==0)
-        d:openReading(true);assert(home==1)
+        local fs=require('libs/libkoreader-lfs')
+        local oldattr,oldsettings=fs.attributes,G_reader_settings
+        local home,opened,changed=0,0,0
+        fs.attributes=function(path) return path=='/mnt/us/documents' and 'directory' or 'file' end
+        local browser={file_chooser={changeToPath=function(_,path)
+            assert(path=='/mnt/us/documents');changed=changed+1
+        end},openFile=function(_,path) assert(path=='book.epub');opened=opened+1 end}
+        -- Actual device FileManager has openFile but no onOpenLastDoc.
+        assert(browser.onOpenLastDoc==nil)
+        G_reader_settings={readSetting=function() return 'book.epub' end}
+        local d=Plugin:new{ui=browser}
+        d:openReading(false);assert(opened==1)
+        d:openReading(true);assert(changed==1 and opened==1)
         d:scheduleStartup();assert(d._startup_tick==nil)
-        local original=G_reader_settings
+        local reader={document={},onHome=function() home=home+1 end}
+        package.loaded['apps/filemanager/filemanager']={instance=browser}
+        d.ui=reader
+        d:openReading(false);assert(home==0 and opened==1)
+        d:openReading(true);assert(home==1 and changed==2)
         G_reader_settings={readSetting=function() return nil end}
-        d.ui={onOpenLastDoc=function() opened=opened+1 end}
-        d:openReading(false);assert(opened==0)
-        d:openReading(true);assert(opened==0)
-        G_reader_settings=original
+        d.ui=browser;d:openReading(false);assert(opened==1 and changed==3)
+        -- A synchronous navigation failure must never terminate KOReader.
+        d.record=function(_,event) assert(event=='reading_navigation_failed') end
+        browser.openFile=function() error('test navigation failure') end
+        G_reader_settings={readSetting=function() return 'book.epub' end}
+        d:openReading(false)
+        fs.attributes,G_reader_settings=oldattr,oldsettings
         require('pluginshare').daypane_started=nil
         ''')
 
