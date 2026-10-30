@@ -91,12 +91,12 @@ def render_daypane(data, path, font, now):
     w=data.get('weather') or {}
     draw_weather_row(im, w, font(38))
     # A single generated asset, reused on every cloud run (no image API calls).
-    with Image.open(Path(__file__).parent / 'golden-retriever.png') as asset:
+    with Image.open(Path(__file__).parent / 'nyanko-sensei.png') as asset:
         gray = asset.convert('L')
         ink = gray.point(lambda value: 255 if value < 180 else 0).getbbox()
-        dog = ImageOps.contain(gray.crop(ink) if ink else gray, (550, 390), Image.Resampling.LANCZOS)
-        dog = dog.point(lambda value: 0 if value < 215 else 255)
-        im.paste(dog, (834 + (550 - dog.width) // 2, 135 + (390 - dog.height) // 2))
+        pet = ImageOps.contain(gray.crop(ink) if ink else gray, (550, 390), Image.Resampling.LANCZOS)
+        pet = pet.point(lambda value: 255 if value > 235 else value)
+        im.paste(pet, (834 + (550 - pet.width) // 2, 135 + (390 - pet.height) // 2))
     season=((now.month % 12)//3 + 3) % 4
     for x,y in [(1280,140),(1330,175),(1300,125)]:
         if season==3:  # winter snowflakes
